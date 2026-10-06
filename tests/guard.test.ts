@@ -84,6 +84,13 @@ describe('bash', () => {
   })
 })
 
+test('does not mistake a bare word like a topic tag for a secrets folder', async ($, on) => {
+  world(on)
+  const r = await call($, { tool: 'Bash', command: 'gh repo edit o/r --add-topic secrets --add-topic credentials' })
+  expect(r.deny).toBeUndefined()
+  expect((await call($, { tool: 'Bash', command: 'cat secrets/prod.txt' })).deny).toBeDefined()
+})
+
 describe('files', () => {
   test('blocks Read of .env but not .env.example', async ($, on) => {
     world(on)

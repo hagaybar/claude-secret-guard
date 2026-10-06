@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>secret-guard — how it decides</title>
+  <style>
+    :root { --bg:#0f1116; --card:#181b22; --ink:#e6e9ef; --muted:#9aa4b2; --line:#2b313c;
+            --ok:#3fb950; --warn:#d29922; --bad:#f85149; --info:#58a6ff; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); padding:24px; max-width:1200px; margin-inline:auto;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; line-height:1.45; }
+    h1 { margin:0 0 4px; } h2 { margin:36px 0 8px; font-size:1.2rem; }
+    .sub, .note { color:var(--muted); } .sub { margin-bottom:20px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; overflow-x:auto; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; }
+    .pill { display:inline-block; padding:1px 8px; border-radius:999px; font-size:.8rem; border:1px solid var(--line); }
+    .block { color:var(--bad); border-color:var(--bad); } .run { color:var(--ok); border-color:var(--ok); }
+    .flag { color:var(--warn); border-color:var(--warn); }
+    table { width:100%; border-collapse:collapse; font-size:.9rem; }
+    th, td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+    th { color:var(--muted); font-weight:600; }
+    code { background:#0b0d12; padding:1px 5px; border-radius:4px; font-size:.85em; }
+    .banner { border:1px solid var(--warn); color:var(--warn); border-radius:10px; padding:10px 14px; margin-bottom:20px; }
+  </style>
+</head>
+<body>
+  <h1>🛡 secret-guard — how it decides</h1>
+  <div class="sub">A map of the mod's logic (<code>hooks/register.tsx</code> + <code>hooks/rules.ts</code>), for reading without reading the code. Source and install: <a style="color:#58a6ff" href="https://github.com/hagaybar/claude-secret-guard">github.com/hagaybar/claude-secret-guard</a></div>
+  <div class="banner">First draft. Pattern-based and best effort: it catches the shapes it knows, not every possible leak.</div>
+
+  <h2>1 · Three moments the guard acts</h2>
+  <div class="grid">
+    <div class="card"><b>Session start</b><br><span class="note">Reads the environment once; keeps values of variables whose names look secret (<code>…_KEY</code>, <code>…_TOKEN</code>, <code>…SECRET…</code>, <code>…PASSWORD…</code>, <code>…AUTH…</code>), 8+ chars, not paths. <b>In memory only.</b> Registers <code>/guard</code>, sets the status line.</span></div>
+    <div class="card"><b>Before every tool call</b><br><span class="note">Inspects what the call would do. Finds a risk → <span class="pill block">block</span> (or <span class="pill flag">flag</span> in warn mode). No risk → <span class="pill run">run</span>.</span></div>
+    <div class="card"><b>Before every row is stored</b><br><span class="note">Scans text going into the transcript (tool output, replies, prompts). Replaces known values and token-shaped strings with <code>[redacted:NAME]</code>.</span></div>
+  </div>
+
+  <h2>2 · The decision for one tool call</h2>
+  <div class="card">
+    <pre class="mermaid">
+flowchart TD
+  A([Claude asks to run a tool]) --> B{Which tool?}
+
+  B -->|Bash| C[Bash checks<br/>secret-file read · env dump<br/>printenv SECRET · $SECRET expansion<br/>git add of secret file]
+  C --> C2[Scan the command text<br/>for known values + token shapes]
+  C2 --> G{git / gh in<br/>the command?}
+  G -->|git add -A / .| G1[git status:<br/>would a secret file be staged?]
+  G -->|git commit| G2[git diff --cached<br/>scan added lines + file names]
+  G -->|git push| G3[git log of commits<br/>not yet on any remote<br/>scan added lines]
+  G -->|gh pr / issue / release / gist| G4[Read --body-file / gist files<br/>scan contents]
+  G -->|none| F
+
+  B -->|Read| R{Secret file?<br/>.env · .bashrc · .aws · .ssh · secrets/ …}
+  R -->|yes| X
+  R -->|no| OK
+
+  B -->|Write| W{Secret file?}
+  W -->|yes| X
+  W -->|no| W2[Scan new content<br/>for known values + token shapes]
+
+  B -->|Edit / NotebookEdit| E[Scan new text<br/>structural edits of a secret file allowed,<br/>carrying a value is not]
+
+  B -->|Anything else<br/>MCP · WebFetch · Agent …| M[Scan every text field<br/>of the input]
+
+  G1 --> F
+  G2 --> F
+  G3 --> F
+  G4 --> F
+  W2 --> F
+  E --> F
+  M --> F
+
+  F{Any finding?}
+  F -->|no| OK([✅ Call runs])
+  F -->|yes| MODE{Mode}
+  MODE -->|block| X([⛔ Refused<br/>Claude gets reason + safe alternative<br/>toast · note on the call · banner · log])
+  MODE -->|warn| WN([⚠️ Runs, but flagged<br/>toast · note · banner · log])
+
+  ERR[[The check itself crashed]] -.->|block mode| X
+  ERR -.->|warn mode| OK
+
+  classDef bad fill:#3a1414,stroke:#f85149,color:#fff;
+  classDef good fill:#12301b,stroke:#3fb950,color:#fff;
+  classDef warn fill:#3a2c0e,stroke:#d29922,color:#fff;
+  class X bad; class OK good; class WN warn;
+    </pre>
+  </div>
+  <div class="note" style="margin-top:8px">The failure path matters: in block mode a broken check <b>holds the call back</b> (fails closed). <code>/guard warn</code> is the escape hatch.</div>
+
+  <h2>3 · The rules, in plain words</h2>
+  <div class="card">
+    <table>
+      <tr><th>Rule</th><th>Stops</th><th>Allowed instead</th></tr>
+      <tr><td><code>secret-file-read</code></td><td><code>cat</code>/<code>grep</code>/<code>sed</code>/<code>cp</code>/… or Read on <code>.bashrc</code>, <code>.env*</code>, <code>~/.aws/*</code>, <code>.netrc</code>, <code>secrets/</code>, <code>.ssh/</code>, <code>.gnupg/</code>, <code>.psst/</code></td><td><code>grep … | sed 's/=.*/=&lt;redacted&gt;/'</code>; <code>source</code>, <code>ls</code>, <code>test -f</code></td></tr>
+      <tr><td><code>secret-file-write</code></td><td>Write over a secret file</td><td>give the user the line with a <code>&lt;placeholder&gt;</code></td></tr>
+      <tr><td><code>env-dump</code></td><td><code>env</code>, <code>printenv</code>, <code>set</code>, <code>export -p</code> printing values</td><td><code>env | cut -d= -f1</code></td></tr>
+      <tr><td><code>printenv-secret</code></td><td><code>printenv API_KEY</code> to the screen</td><td><code>printenv API_KEY | sha256sum | cut -c1-12</code></td></tr>
+      <tr><td><code>echo-secret</code></td><td><code>echo $API_KEY</code></td><td><code>[ -n "$API_KEY" ] &amp;&amp; echo set</code>, <code>${API_KEY:+set}</code>, <code>${#API_KEY}</code></td></tr>
+      <tr><td><code>default-expansion</code></td><td><code>${API_KEY:-x}</code>, <code>${API_KEY:=x}</code> (expand to the value)</td><td><code>${API_KEY:+set}</code></td></tr>
+      <tr><td><code>secret-on-argv</code></td><td><code>curl -H "…$TOKEN"</code> (visible in <code>ps</code>)</td><td><code>printenv TOKEN | cmd --stdin</code>, <code>cmd &lt;&lt;&lt; "$TOKEN"</code></td></tr>
+      <tr><td><code>git-add-secret-file</code></td><td>staging a secret file (explicitly or via <code>-A</code>/<code>.</code>)</td><td>—</td></tr>
+      <tr><td><code>commit:* / push:*</code></td><td>a commit or push whose added lines hold a value or token shape</td><td>—</td></tr>
+      <tr><td><code>gh:*</code></td><td>PR / issue / release / gist text holding one</td><td>—</td></tr>
+      <tr><td><code>secret-value</code></td><td>a real value (from session start) anywhere in a command, file write or tool input</td><td>refer to it by name</td></tr>
+      <tr><td><code>secret-shape</code></td><td>a string that looks like a token, even if unknown</td><td><code>&lt;placeholder&gt;</code></td></tr>
+    </table>
+  </div>
+
+  <h2>4 · Token shapes it recognises</h2>
+  <div class="card note">
+    AWS access key · GitHub token / fine-grained PAT · Anthropic key · OpenAI-style key · Slack token · Google API key ·
+    <b>Ex Libris (Alma) API key</b> · PEM private key header · JWT · <code>password = "…"</code>-style hard-coded credentials (checked, not redacted).
+  </div>
+
+  <h2>5 · How it shows itself</h2>
+  <div class="card">
+    <table>
+      <tr><th>Where</th><th>What</th></tr>
+      <tr><td>Banner above the prompt</td><td>“SECRET GUARD ON”, mode, counts (vars known · blocked · flagged · redacted), last event. <code>[–]</code> collapses it.</td></tr>
+      <tr><td>Status line</td><td><code>🛡 guard on · N blocked</code></td></tr>
+      <tr><td>Toast</td><td>One per block / flag / redaction, with the reason (never the value).</td></tr>
+      <tr><td>On the tool call row</td><td>“secret-guard blocked this call”</td></tr>
+      <tr><td><code>/guard</code></td><td>status · <code>log</code> (last 20, all sessions) · <code>block|warn</code> · <code>full|compact|off</code></td></tr>
+      <tr><td><code>/config</code></td><td>mode, banner, secret-name regex, extra forbidden / allowed paths, redaction, git checks, value loading</td></tr>
+    </table>
+  </div>
+
+  <h2>6 · Known gaps (why it's a first draft)</h2>
+  <div class="card note">
+    <ul style="margin:0">
+      <li>Commands in a form the patterns don't anticipate (aliases, scripts, <code>eval</code>, odd quoting) can pass.</li>
+      <li>Only variables present at session start, with secret-looking names, are known by value.</li>
+      <li>Git checks run in the session folder (or a leading <code>cd</code> / <code>git -C</code>); a commit chained after <code>git add</code> in one command is checked against what was staged <i>before</i> it.</li>
+      <li>Redaction can't reach anything already stored, committed or pushed.</li>
+    </ul>
+  </div>
+
+  <script>
+    function boot() { window.mermaid && window.mermaid.initialize({ startOnLoad: true, theme: "dark", flowchart: { htmlLabels: true } }); }
+    var c = document.createElement("script");
+    c.src = "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js";
+    c.onload = boot; document.head.appendChild(c);
+  </script>
+</body>
+</html>

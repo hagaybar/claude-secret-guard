@@ -15,7 +15,7 @@ const BUILTIN_FORBIDDEN = [
   /(^|\/)\.env(\.[^/]*)?$/,
   /[^/]\.env$/,
   /(^|\/)\.aws\/(credentials|config)$/,
-  /(^|\/)(secrets|credentials|\.psst|\.gnupg|\.ssh)(\/|$)/,
+  /(^|\/)(secrets|credentials)\/|(^|\/)(\.psst|\.gnupg|\.ssh)(\/|$)/,
 ]
 
 export const DEFAULT_SECRET_NAMES =
@@ -163,7 +163,7 @@ export function words(segment: string): string[] {
 }
 
 const READ_VERB =
-  /^(cat|head|tail|less|more|bat|batcat|grep|egrep|fgrep|rg|ag|sed|awk|gawk|strings|xxd|od|hexdump|base64|nl|tac|cut|sort|uniq|diff|cmp|cp|mv|scp|rsync|tee|vi|vim|nvim|nano|emacs|code|jq|yq|python|python3|node|ruby|perl|php|curl|wget|gh|zip|tar|gzip)$/
+  /^(cat|head|tail|less|more|bat|batcat|grep|egrep|fgrep|rg|ag|sed|awk|gawk|strings|xxd|od|hexdump|base64|nl|tac|cut|sort|uniq|diff|cmp|cp|mv|scp|rsync|tee|vi|vim|nvim|nano|emacs|code|jq|yq|python|python3|node|ruby|perl|php|curl|wget|zip|tar|gzip)$/
 
 const DUMP = /^(env|printenv|set|export|declare\s+-[px]+|export\s+-p|typeset\s+-[px]+)$/
 
