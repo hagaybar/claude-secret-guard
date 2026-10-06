@@ -1,0 +1,5 @@
+{
+  "name": "hagay-mods",
+  "owner": { "name": "Hagay Bar" },
+  "plugins": [{ "name": "secret-guard", "source": "./" }]
+}

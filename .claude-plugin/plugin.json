@@ -1,0 +1,58 @@
+{
+  "name": "secret-guard",
+  "version": "0.1.0",
+  "description": "Keeps API keys, tokens and passwords out of the transcript, tool output, files, commits, PRs and issues.",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "mode": {
+      "type": "string",
+      "title": "Secret guard: mode",
+      "description": "block refuses a risky call; warn lets it run and only declares it.",
+      "options": ["block", "warn"],
+      "default": "block"
+    },
+    "banner": {
+      "type": "string",
+      "title": "Secret guard: banner",
+      "description": "How the guard shows itself above the prompt.",
+      "options": ["full", "compact", "off"],
+      "default": "full"
+    },
+    "secretNames": {
+      "type": "string",
+      "title": "Secret guard: secret variable names",
+      "description": "Regex (case-insensitive) for environment variable names whose values are secrets.",
+      "default": "(^|_)(KEY|APIKEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|CREDENTIALS?|AUTH)(_|$)"
+    },
+    "extraForbiddenPaths": {
+      "type": "string",
+      "title": "Secret guard: extra forbidden paths",
+      "description": "Comma-separated globs added to the built-in list (e.g. config/prod.yaml,**/*.pem).",
+      "default": ""
+    },
+    "allowPaths": {
+      "type": "string",
+      "title": "Secret guard: allowed paths",
+      "description": "Comma-separated globs that are never treated as secret files.",
+      "default": ".env.example,.env.sample,.env.template"
+    },
+    "redactOutput": {
+      "type": "boolean",
+      "title": "Secret guard: redact output",
+      "description": "Replace secret values and secret-shaped strings in anything stored in the transcript.",
+      "default": true
+    },
+    "guardGit": {
+      "type": "boolean",
+      "title": "Secret guard: git and GitHub",
+      "description": "Scan staged changes before git commit, outgoing commits before git push, and gh PR/issue/release/gist bodies.",
+      "default": true
+    },
+    "loadEnvValues": {
+      "type": "boolean",
+      "title": "Secret guard: know real values",
+      "description": "Read the session's environment once (in memory only, never shown) so the guard can spot the real secret values.",
+      "default": true
+    }
+  }
+}
