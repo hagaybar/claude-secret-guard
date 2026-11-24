@@ -1,3 +1,6 @@
+> **Moved 2026-11-24.** secret-guard now lives in [hagaybar/claude-toolkit](https://github.com/hagaybar/claude-toolkit) (`plugins/secret-guard`), which is the `hagay-mods` marketplace:
+> `claude plugin marketplace add hagaybar/claude-toolkit` then `claude plugin install secret-guard@hagay-mods`. This repo is archived.
+
 # 🛡 secret-guard
 
 **A Claude Code mod that keeps API keys, tokens and passwords out of the agent's reach —
